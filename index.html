@@ -16,6 +16,10 @@
             color: #e6edf3; display: flex; flex-direction: column; transform: translateX(-102%);
             transition: transform .2s ease; box-shadow: 2px 0 12px rgba(0,0,0,.6); }
   #drawer.open { transform: none; }
+  #locate { position: absolute; right: 10px; bottom: 118px; z-index: 1000; width: 46px; height: 46px; border: 0;
+            border-radius: 50%; background: #161d26; color: #4da3ff; font-size: 24px; line-height: 46px; padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,.5); cursor: pointer; }
+  #locate.on { background: #1d3a5f; color: #fff; }
   #drawer .hd { display: flex; gap: 8px; padding: 12px; padding-top: 64px; border-bottom: 1px solid #1e2732; }
   #q { flex: 1; min-width: 0; height: 42px; border-radius: 10px; border: 1px solid #2a3542; background: #161d26;
        color: #e6edf3; padding: 0 12px; font-size: 16px; }
@@ -55,6 +59,7 @@
 <body>
 <div id="map"></div>
 <button id="toggle" aria-label="Open site list">&#9776; Sites</button>
+<button id="locate" aria-label="Show my location" title="Show my location">&#9678;</button>
 <aside id="drawer">
   <div class="hd">
     <input id="q" type="search" placeholder="Search moorings and dive sites" autocomplete="off">
@@ -493,6 +498,29 @@ function renderList() {
     list.appendChild(none);
   }
 }
+
+// ---------- Live location (blue dot, like Apple/Google Maps) ----------
+const meLayer = L.layerGroup().addTo(map);
+const locateBtn = document.getElementById("locate");
+let centeredOnMe = false;
+map.on("locationfound", e => {
+  meLayer.clearLayers();
+  L.circle(e.latlng, { radius: e.accuracy, color: "#2f80ed", weight: 1, fillColor: "#2f80ed", fillOpacity: 0.12 }).addTo(meLayer);
+  L.circleMarker(e.latlng, { radius: 8, color: "#fff", weight: 2, fillColor: "#2f80ed", fillOpacity: 1 }).addTo(meLayer);
+  if (!centeredOnMe) { map.setView(e.latlng, Math.max(map.getZoom(), 15)); centeredOnMe = true; }
+  locateBtn.classList.add("on");
+});
+map.on("locationerror", e => {
+  locateBtn.classList.remove("on");
+  locateBtn.title = "Location unavailable: " + e.message + ". Allow location for this site in Settings > Safari.";
+});
+locateBtn.onclick = () => {
+  if (locateBtn.classList.contains("on")) {
+    map.stopLocate(); meLayer.clearLayers(); locateBtn.classList.remove("on"); centeredOnMe = false; return;
+  }
+  centeredOnMe = false;
+  map.locate({ watch: true, enableHighAccuracy: true, setView: false });
+};
 
 document.getElementById("toggle").onclick = () => drawer.classList.toggle("open");
 document.getElementById("close").onclick = () => drawer.classList.remove("open");
