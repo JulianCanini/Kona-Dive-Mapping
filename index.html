@@ -426,10 +426,6 @@ for (const k of Object.keys(GROUPS)) {
   row.innerHTML = `<span class="sw" style="background:${GROUPS[k].color}"></span>${GROUPS[k].label}`;
   legend.appendChild(row);
 }
-const fixRow = document.createElement("div");
-fixRow.className = "row";
-fixRow.innerHTML = `<span class="sw" style="background:#e03131"></span>Your dive fix`;
-legend.appendChild(fixRow);
 
 // Layer switcher
 L.control.layers(
@@ -446,7 +442,6 @@ const items = [];
 STATE.forEach(([name, la, lo, g], i) => items.push({ name, lat: dm(la), lon: -dm(lo), g, sec: "State moorings (DLNR)", m: moorMarkers[i] }));
 SITES.forEach(([name, lat, lon, g], i) => items.push({ name, lat, lon, g, sec: "Scuba sites (survey / published)", m: diveMarkers[i] }));
 EST.forEach(([name, lat, lon, g], i) => items.push({ name, lat, lon, g, sec: "Estimated / anchored", m: estMarkers[i] }));
-items.push({ name: "Your dive fix", lat: FIX[0], lon: FIX[1], g: null, sec: "Your fix", m: null });
 
 const drawer = document.getElementById("drawer");
 const list = document.getElementById("list");
