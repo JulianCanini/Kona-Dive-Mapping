@@ -63,7 +63,7 @@
   <div id="list"></div>
   <div class="ft">
     <div id="legend"></div>
-    <div class="tip">Dashed rings are estimated (tap for detail). Red dot is your GPS fix. Named sites with no coordinates found: Paradise Pinnacle, Twin Sisters, Hammerhead Point, Dog Beach, Naia, Horseshoe Reef, Crescent Beach.</div>
+    <div class="tip">Dashed rings are estimated (tap for detail). Named sites with no coordinates found: Paradise Pinnacle, Twin Sisters, Hammerhead Point, Dog Beach, Naia, Horseshoe Reef, Crescent Beach.</div>
   </div>
 </aside>
 
@@ -413,10 +413,6 @@ for (const [name, lat, lon, g, note] of SITES) {
     .addTo(diveLayer);
 }
 
-// Your dive fix
-L.circleMarker(FIX, { radius: 10, color: "#fff", weight: 2, fillColor: "#e03131", fillOpacity: 1 })
-  .bindPopup("<b>Your dive fix</b><br>Watch GPS, 6 points within about 3 m<br>19&deg; 44.203&prime; N, 156&deg; 03.228&prime; W")
-  .addTo(map);
 
 // Legend
 const legend = document.getElementById("legend");
