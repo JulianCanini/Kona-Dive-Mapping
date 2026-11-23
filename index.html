@@ -399,7 +399,7 @@ for (const [name, la, lo, g] of STATE) {
   L.circleMarker([lat, lon], { radius: 6, color: "#fff", weight: 1.5, fillColor: col, fillOpacity: 1 })
     .bindPopup(
       `<b>${name}</b><br>${fmt(lat)} N, ${fmt(lon)} W<br>` +
-      `${distLabel(distM(FIX, [lat, lon]))} from your fix<br>` +
+      `<span class="mydist" data-lat="${lat}" data-lon="${lon}">Distance: turn on location</span><br>` +
       `<i>State mooring coordinates</i>${infoFor(name)}`
     )
     .addTo(stateLayer);
@@ -414,7 +414,7 @@ for (const [name, lat, lon, g, kind, note] of EST) {
   })
     .bindPopup(
       `<b>${name}</b><br>${fmt(lat)} N, ${fmt(lon)} W<br>` +
-      `${distLabel(distM(FIX, [lat, lon]))} from your fix<br>` +
+      `<span class="mydist" data-lat="${lat}" data-lon="${lon}">Distance: turn on location</span><br>` +
       `<i>${kind === "anchor" ? "Anchored" : "Estimated"}:</i> ${note}${infoFor(name)}`
     )
     .addTo(estLayer);
@@ -427,7 +427,7 @@ for (const [name, lat, lon, g, note] of SITES) {
   L.circleMarker([lat, lon], { radius: 5, color: "#fff", weight: 1, fillColor: GROUPS[g].color, fillOpacity: 1 })
     .bindPopup(
       `<b>${name}</b><br>${fmt(lat)} N, ${fmt(-lon)} W<br>` +
-      `${distLabel(distM(FIX, [lat, lon]))} from your fix<br><i>${note}</i>${infoFor(name)}`
+      `<span class="mydist" data-lat="${lat}" data-lon="${lon}">Distance: turn on location</span><br><i>${note}</i>${infoFor(name)}`
     )
     .addTo(diveLayer);
 }
