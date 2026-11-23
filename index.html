@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kona Dive Sites - Satellite Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: #0b0f14; color: #e6edf3; font-family: system-ui, -apple-system, sans-serif; }
+  #map { height: 100%; width: 100%; background: #0b0f14; }
+  #toggle { position: absolute; top: 10px; left: 10px; z-index: 1000; height: 44px; padding: 0 16px; border: 0;
+            border-radius: 10px; background: #161d26; color: #e6edf3; font: 600 15px system-ui, sans-serif;
+            box-shadow: 0 2px 8px rgba(0,0,0,.5); cursor: pointer; }
+  #drawer { position: absolute; top: 0; left: 0; bottom: 0; width: min(88vw, 360px); z-index: 1001; background: #0f141b;
+            color: #e6edf3; display: flex; flex-direction: column; transform: translateX(-102%);
+            transition: transform .2s ease; box-shadow: 2px 0 12px rgba(0,0,0,.6); }
+  #drawer.open { transform: none; }
+  #drawer .hd { display: flex; gap: 8px; padding: 12px; padding-top: 64px; border-bottom: 1px solid #1e2732; }
+  #q { flex: 1; min-width: 0; height: 42px; border-radius: 10px; border: 1px solid #2a3542; background: #161d26;
+       color: #e6edf3; padding: 0 12px; font-size: 16px; }
+  #close { width: 42px; height: 42px; border: 0; border-radius: 10px; background: #1e2732; color: #e6edf3;
+           font-size: 22px; cursor: pointer; }
+  #list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 0; overscroll-behavior: contain; }
+  .sec { padding: 14px 14px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8b98a7; }
+  .item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 0;
+          background: none; color: #e6edf3; text-align: left; font: 15px system-ui, sans-serif; cursor: pointer; }
+  .item:hover, .item:active { background: #1a222c; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px; border: 1px solid #fff; }
+  .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #drawer .ft { border-top: 1px solid #1e2732; padding: 10px 14px; font-size: 12px; color: #8b98a7; max-height: 32vh; overflow-y: auto; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; color: #c9d3dd; }
+  #legend .sw { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #fff; flex: 0 0 11px; }
+  .tip { margin-top: 6px; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #161d26; color: #e6edf3; box-shadow: 0 3px 12px rgba(0,0,0,.6); }
+  .leaflet-popup-content { font: 14px/1.45 system-ui, sans-serif; margin: 12px 14px; max-width: 270px; }
+  .leaflet-popup-content b { color: #fff; }
+  .leaflet-popup-content i { color: #aab6c3; }
+  .leaflet-control-layers { background: #161d26; color: #e6edf3; border: 0; }
+  .leaflet-control-layers label { color: #e6edf3; }
+  .leaflet-control-zoom a { background: #161d26 !important; color: #e6edf3 !important; border-color: #2a3542 !important; }
+  .leaflet-control-attribution { background: rgba(11,15,20,.75) !important; color: #9aa6b2 !important; }
+  .leaflet-control-attribution a { color: #c9d3dd !important; }
+  html, body, #map { height: 100%; margin: 0; }
+  #panel { position: absolute; top: 10px; left: 56px; z-index: 1000; background: rgba(255,255,255,0.94);
+           padding: 9px 11px; border-radius: 8px; font: 13px/1.4 system-ui, sans-serif; max-width: 270px;
+           box-shadow: 0 1px 5px rgba(0,0,0,0.35); }
+  #panel b { font-size: 14px; }
+  .row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+  .sw { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #fff; }
+  .note { color: #555; margin-top: 6px; font-size: 12px; }
+  .leaflet-popup-content { font: 13px/1.45 system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<button id="toggle" aria-label="Open site list">&#9776; Sites</button>
+<aside id="drawer">
+  <div class="hd">
+    <input id="q" type="search" placeholder="Search moorings and dive sites" autocomplete="off">
+    <button id="close" aria-label="Close list">&times;</button>
+  </div>
+  <div id="list"></div>
+  <div class="ft">
+    <div id="legend"></div>
+    <div class="tip">Dashed rings are estimated (tap for detail). Red dot is your GPS fix. Named sites with no coordinates found: Paradise Pinnacle, Twin Sisters, Hammerhead Point, Dog Beach, Naia, Horseshoe Reef, Crescent Beach.</div>
+  </div>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ---------- Groups and colors ----------
+const GROUPS = {
+  garden:    {label: "Garden Eel Cove / manta area", color: "#d9480f"},
+  keahole:   {label: "Keahole Point",                color: "#7048e8"},
+  golden:    {label: "Golden Arches / Carpenter's",  color: "#e8590c"},
+  pyramid:   {label: "Pyramid Pinnacles",            color: "#1098ad"},
+  kaloko:    {label: "Kaloko Arches / Lone Tree",    color: "#2b8a3e"},
+  turtle:    {label: "Turtle Pinnacle area",         color: "#66a80f"},
+  honokohau: {label: "Honokohau / Eel Cove",         color: "#1c7ed6"},
+  pawai:     {label: "Pawai Bay / Old Airport",      color: "#a61e4d"},
+  north:     {label: "Kua Bay area",                 color: "#868e96"},
+  kohala:    {label: "Kohala / Puako",               color: "#f08c00"},
+  keauhou:   {label: "Keauhou / Kahaluu",            color: "#3b5bdb"},
+  kealakekua:{label: "Kealakekua / Place of Refuge", color: "#0ca678"},
+  survey:    {label: "Scuba sites (DLNR survey / published)", color: "#c2255c"}
+};
+
+// ---------- State mooring sites (DLNR list; lon given as West, deg.min.dec) ----------
+const STATE = [
+  ["A Bay Arches",                     "19.54.919", "155.54.001", "kohala"],
+  ["Black Coral Arch",                 "19.50.154", "155.59.789", "north"],
+  ["Touch Of Grey",                    "19.46.962", "156.03.159", "keahole"],
+  ["Kua Bay",                          "19.48.776", "156.00.487", "north"],
+  ["Hoover's Towers",                  "19.44.422", "156.03.333", "keahole"],
+  ["Garden Eels North",                "19.44.230", "156.03.240", "garden"],
+  ["Garden Eels Central",              "19.44.202", "156.03.235", "garden"],
+  ["Garden Eels East",                 "19.44.198", "156.03.215", "garden"],
+  ["Keahole Point / Garden Eels",      "19.44.161", "156.03.235", "garden"],
+  ["Keahole Sand Chute / Tako City",   "19.43.955", "156.03.467", "keahole"],
+  ["Keahole / Wash Rock",              "19.43.934", "156.03.578", "keahole"],
+  ["Pipe Dreams",                      "19.43.747", "156.03.735", "keahole"],
+  ["Black Hole",                       "19.42.932", "156.03.238", "golden"],
+  ["Dottie's Reef",                    "19.42.406", "156.03.001", "golden"],
+  ["Rabbi's Reef / Lionfish Arch",     "19.42.359", "156.03.056", "golden"],
+  ["Phantom Ridge",                    "19.42.295", "156.03.016", "golden"],
+  ["Carpenter's House",                "19.42.283", "156.03.009", "golden"],
+  ["Golden Arches North",              "19.42.203", "156.03.007", "golden"],
+  ["Golden Arches South",              "19.42.176", "156.02.991", "golden"],
+  ["Wawahiwaa Pt / Pyramid Pinnacles", "19.41.551", "156.02.775", "pyramid"],
+  ["Pyramid Pinnacles / Drop-off",     "19.41.552", "156.02.742", "pyramid"],
+  ["Skunk Hollow Inside",              "19.41.483", "156.02.582", "kaloko"],
+  ["Skunk Hollow Outside",             "19.41.466", "156.02.588", "kaloko"],
+  ["Suck'Em Up Cave",                  "19.41.480", "156.02.538", "kaloko"],
+  ["Lone Tree Arch",                   "19.41.468", "156.02.445", "kaloko"],
+  ["Freeze Face Cave",                 "19.41.425", "156.02.365", "kaloko"],
+  ["Windows",                          "19.41.154", "156.02.099", "kaloko"],
+  ["Kaloko Arches 1",                  "19.41.019", "156.02.152", "kaloko"],
+  ["Kaloko Ledges / Kaloko Arches 2",  "19.40.991", "156.02.192", "kaloko"],
+  ["Terrapin Station",                 "19.40.330", "156.01.875", "turtle"],
+  ["Turtle Pinnacle",                  "19.40.305", "156.01.830", "turtle"],
+  ["Turtle Pai",                       "19.40.302", "156.01.791", "turtle"],
+  ["Turtle Heaven",                    "19.40.265", "156.01.754", "turtle"],
+  ["Honokohau Inside",                 "19.40.076", "156.01.730", "honokohau"],
+  ["Honokohau Middle",                 "19.40.072", "156.01.747", "honokohau"],
+  ["Honokohau Outside",                "19.40.064", "156.01.768", "honokohau"],
+  ["Eel Cove North (Moray Eel Cove)",  "19.39.302", "156.01.910", "honokohau"],
+  ["Eel Cove South (Moray Eel Cove)",  "19.39.249", "156.01.893", "honokohau"],
+  ["Outhouse",                         "19.39.002", "156.01.806", "honokohau"],
+  ["Kaiwi Wash Rock 1 (Pawai Bay)",    "19.38.816", "156.01.410", "pawai"],
+  ["Kaiwi Wash Rock 2 (Pawai Bay)",    "19.38.937", "156.01.389", "pawai"],
+  ["Kaiwi Arch Cave (Pawai Bay)",      "19.38.840", "156.01.375", "pawai"],
+  ["Kaiwi Sand Channel (Pawai Bay)",   "19.38.849", "156.01.348", "pawai"],
+  ["Kaiwi Kamanu (Pawai Bay)",         "19.38.857", "156.01.308", "pawai"],
+  ["Disneyland",                       "19.38.830", "156.01.186", "pawai"],
+  ["Air Tanks",                        "19.38.802", "156.01.108", "pawai"],
+  ["Old Airport",                      "19.38.648", "156.00.990", "pawai"],
+  ["Shark Fin Rock",                   "19.38.620", "156.00.940", "pawai"],
+  ["Casa Cave",                        "19.36.963", "155.59.209", "keauhou"],
+  ["Mano Point (Fantasea Reef)",       "19.32.757", "155.57.700", "keauhou"],
+  ["Chimney",                          "19.32.475", "155.57.600", "keauhou"],
+  ["Leinokano Point",                  "19.32.180", "155.57.520", "keauhou"],
+  ["Paaoa Point",                      "19.31.863", "155.57.443", "keauhou"],
+  ["Coral Domes",                      "19.31.307", "155.57.562", "keauhou"],
+  ["Kekeiwaha Point",                  "19.31.177", "155.57.693", "keauhou"],
+  ["Henry's Cave",                     "19.30.496", "155.57.292", "keauhou"],
+  ["Sharkey's (Bay of Pig)",           "19.30.371", "155.57.305", "keauhou"],
+  ["Nenue Point",                      "19.30.764", "155.57.825", "keauhou"],
+  ["Long Lava Tube (Amphitheater)",    "19.30.239", "155.57.183", "keauhou"],
+  ["Amphitheater 2 (Octocoral)",       "19.30.185", "155.57.145", "keauhou"],
+  ["Driftwood",                        "19.29.929", "155.57.088", "keauhou"],
+  ["The Dome",                         "19.29.823", "155.57.002", "keauhou"],
+  ["Ridges",                           "19.29.665", "155.57.010", "keauhou"],
+  ["Garden Eel Cove (mooring 83)",     "19.44.186", "156.03.260", "garden"],
+  ["Keauhou Manta",                    "19.33.558", "155.58.023", "keauhou"],
+  // North Kona / Kohala moorings
+  ["Black Point North",                "20.06.775", "155.52.800", "kohala"],
+  ["Black Point",                      "20.06.349", "155.53.086", "kohala"],
+  ["Black Point South",                "20.06.203", "155.52.988", "kohala"],
+  ["Kei Kei Caverns / Horseshoes",     "20.04.824", "155.52.058", "kohala"],
+  ["Kei Kei Caverns South",            "20.04.803", "155.52.038", "kohala"],
+  ["Ulua Caverns",                     "20.04.462", "155.51.861", "kohala"],
+  ["Frog Rock",                        "20.03.895", "155.51.266", "kohala"],
+  ["Lava Dome Rock",                   "20.03.654", "155.51.058", "kohala"],
+  ["Crystal Cove",                     "20.03.220", "155.50.749", "kohala"],
+  ["Puako Reef #55",                   "19.58.217", "155.50.837", "kohala"],
+  ["Puako Reef #69",                   "19.58.203", "155.50.924", "kohala"],
+  ["Puako Reef #112",                  "19.58.052", "155.51.309", "kohala"],
+  ["Puako Condos",                     "19.58.405", "155.50.615", "kohala"],
+  ["Puako Puffer Canyon",              "19.58.260", "155.50.729", "kohala"],
+  ["Paniau South",                     "19.57.566", "155.51.619", "kohala"],
+  ["Paniau North",                     "19.58.590", "155.51.595", "kohala"],
+  ["Turtles",                          "19.56.957", "155.52.259", "kohala"],
+  ["Haunted Cavern",                   "19.56.809", "155.52.339", "kohala"],
+  ["Pentagon",                         "19.54.940", "155.53.940", "kohala"]
+];
+
+// ---------- Anchored or estimated sites (decimal degrees, lon negative) ----------
+// kind "anchor": position taken from a published landmark or park coordinate (approx. +/-300 m)
+// kind "est":    position estimated from nearby landmarks (approx. +/-1 km)
+const EST = [
+  ["Mahukona (Mahukona Beach Park)", 20.1830, -155.9000, "kohala", "anchor",
+   "Anchored to Mahukona Beach Park coordinates (The Dyrt). Dive site is offshore of the park; treat as approximate."],
+  ["Hapuna Beach (shore dive)", 19.9913, -155.8230, "kohala", "anchor",
+   "Anchored to Hapuna Beach State Park coordinates (Topozone, Hawaii Guide). Shore site; offshore position approximate."],
+  ["Place of Refuge (Pu'uhonua o Honaunau)", 19.4215, -155.9114, "kealakekua", "anchor",
+   "Anchored to the park coordinates (Hawaii Guide, Waymarking). The dive area is just offshore."],
+  ["Kealakekua Bay MLCD", 19.4833, -155.9333, "kealakekua", "anchor",
+   "Anchored to the DLNR Marine Life Conservation District point. Other sources differ by about 1-2 km."],
+  ["Two Step (north of park)", 19.4240, -155.9125, "kealakekua", "est",
+   "Estimated: Jack's Diving Locker says Two Step is just north of the park. Uncertainty about 500 m to 1 km."],
+  ["Pine Trees Point", 19.7235, -156.0505, "keahole", "est",
+   "Estimated from Pine Trees Beach, which is north of Kona Airport near Keahole. Uncertainty about 500 m to 1 km."],
+  ["Mile Marker 4 (Old A's)", 19.5955, -155.9742, "keauhou", "est",
+   "Estimated: Zentacle places it at the 4-mile marker on Ali'i Drive just south of Kailua, about 0.3 mi south of Pahoehoe. Another source ties 'Old A's' to the old airport, so check this one. Uncertainty about 500 m to 1 km."],
+  ["Kahaluu Beach Park", 19.57918, -155.96697, "keauhou", "anchor",
+   "Anchored to Kahaluu Beach Park coordinates (Topozone)."],
+  ["Pahoehoe Beach Park", 19.59917, -155.97583, "keauhou", "anchor",
+   "Anchored to Pahoehoe Beach Park coordinates (TopoQuest, NAD83)."],
+  ["Kailua Pier", 19.63828, -155.99680, "pawai", "anchor",
+   "Anchored to the Kailua Bay Wharf coordinates (MarineLink)."],
+  ["Honokohau Harbor", 19.66970, -156.02500, "honokohau", "anchor",
+   "Anchored to the Honokohau Harbor coordinates (MarineLink). The boats leave from here for the Honokohau-area dives."],
+  ["Keei Beach", 19.47491, -155.92164, "kealakekua", "anchor",
+   "Anchored to Keei Beach coordinates (Hawaii Guide). Shore dive south of Kealakekua Bay."],
+  ["Milolii Bay", 19.18469, -155.90735, "kealakekua", "anchor",
+   "Anchored to Milolii Bay coordinates (Hometown Locator). The bay is a broad feature, so the dive spot can be off by about 1 km."],
+  ["North Kiholo Bay (2017 survey)", 19.85500, -155.94983, "kohala", "anchor",
+   "2017 DLNR survey point."],
+  ["Keawaiki Bay (2017 survey)", 19.88910, -155.90733, "kohala", "anchor",
+   "2017 DLNR survey point."],
+  ["Kapalaoa (2017 survey)", 19.90267, -155.90350, "kohala", "anchor",
+   "2017 DLNR survey point."],
+  ["Anaehookalu Bay / A Bay (2017 survey)", 19.90443, -155.90359, "kohala", "anchor",
+   "2017 DLNR survey point."],
+  ["Kona Makai (2017 survey)", 19.62333, -155.98633, "pawai", "anchor",
+   "2017 DLNR survey point, 40-45 ft."],
+  ["Alii Villas (2017 survey)", 19.62500, -155.98667, "pawai", "anchor",
+   "2017 DLNR survey point, 40-45 ft."],
+  ["Kona Surf / Keauhou North (2017 survey)", 19.55938, -155.96709, "keauhou", "anchor",
+   "2017 DLNR survey point, Keauhou manta area."],
+  ["Honaunau Bay (2017 survey)", 19.42333, -155.92000, "kealakekua", "anchor",
+   "2017 DLNR survey point, 40 ft."],
+  ["Carpenter's Reef (2017 survey)", 19.70472, -156.05016, "golden", "anchor",
+   "2017 DLNR survey point, 34 ft. Likely the same area as the Carpenter's House mooring."],
+  // Rough placements from the Kona chart photos and online descriptions. Expect 0.5 to 2 km error.
+  ["Robert's Reef", 19.7900, -156.0400, "north", "est",
+   "Rough: the Kona chart puts it on the north Kona coast near Makalawena. About 1 km uncertainty."],
+  ["Makaiwa Bay (Mauna Lani)", 19.9400, -155.8800, "kohala", "est",
+   "Rough: Snorkel Bob's places it just north of Waikoloa on Hwy 19, by the Mauna Lani Bay Hotel. About 1 km uncertainty."],
+  ["Inside Illusions", 19.4220, -155.9330, "kealakekua", "est",
+   "Rough: the Kona chart puts it offshore of Two Step / Place of Refuge. About 1 km uncertainty."],
+  ["Magic Sands / White Sands", 19.5975, -155.9790, "keauhou", "est",
+   "Rough: Magic Sands is just north of Mile Marker 4 (La'aloa page) and close to Pahoehoe. Sources disagree on whether it is the same as Pahoehoe. About 300 m uncertainty."],
+  ["High Rock", 19.7045, -156.0500, "golden", "est",
+   "Rough: the Kona chart lists High Rock with Phantom Ridge and Carpenter's House. About 300 m uncertainty."],
+  ["Skull Cave", 19.7025, -156.0505, "golden", "est",
+   "Rough: Jack's Diving Locker describes it as a second structure at the Golden Arches area. About 500 m uncertainty."],
+  ["Hoona Bay", 19.7420, -156.0570, "garden", "est",
+   "Rough: on the north side of Keahole Airport. About 1 km uncertainty."],
+  ["Puako Point", 19.9730, -155.8470, "kohala", "est",
+   "Rough: near Puako Condos on the Puako shoreline. About 500 m uncertainty."],
+  ["Puako Church Point", 19.9800, -155.8460, "kohala", "est",
+   "Rough: Puako shoreline near the church point. About 500 m uncertainty."],
+  ["Puako House 40", 19.9755, -155.8430, "kohala", "est",
+   "Rough: Puako shoreline, near the House 40 shore dive. About 500 m uncertainty."],
+  ["Puako Village End", 19.9710, -155.8410, "kohala", "est",
+   "Rough: end of Puako Road, from the Zentacle directions. About 500 m uncertainty."],
+  ["Kawaihae Harbor (Nudi Madness)", 20.0345, -155.8310, "kohala", "est",
+   "Rough: Kawaihae Harbor north end, the nudibranch shore dive. About 300 m uncertainty."],
+  ["Hookena Beach Park", 19.3952, -155.9889, "kealakekua", "est",
+   "Rough: Hookena Beach Park on the South Kona coast. About 1 km uncertainty."],
+  ["Manini Beach", 19.4625, -155.9330, "kealakekua", "est",
+   "Rough: the Kona chart places Manini Point near Kealakekua Bay. About 1 km uncertainty."]
+];
+
+// ---------- Scuba sites with published coordinates (not DLNR moorings) ----------
+// Duplicates of mooring points were left out; they already appear under the mooring name.
+const SITES = [
+  ["Manta Ray Beach (survey)",             19.675000,  -156.025833, "survey", "DLNR 2017 survey, 30 ft, rock and coral with sand areas."],
+  ["Pyramid Pinnacle Outer (survey)",      19.692517,  -156.046250, "survey", "DLNR 2017 survey, 66 ft bottom, buoy at 19 ft. Next to the Pyramid Pinnacles moorings."],
+  ["Keauhou Manta / Sheraton (survey)",    19.559130,  -155.967440, "survey", "DLNR 2017 survey, Keauhou South Inside. Keauhou Bay manta night dive area."],
+  ["Puako Reef (survey)",                  19.941667,  -155.880000, "survey", "DLNR 2017 survey, 40 ft, rock, sand and reef flat. Coordinates look rounded."],
+  ["Makalawena (survey)",                  19.791667,  -156.033333, "survey", "DLNR 2017 survey, 40 ft, rock, coral and sand. Coordinates look rounded."],
+  ["Awakee (survey)",                      19.800000,  -156.025000, "survey", "DLNR 2017 survey, 40-45 ft. Coordinates look rounded."],
+  ["Kua Bay (survey)",                     19.805000,  -156.016667, "survey", "DLNR 2017 survey, 40 ft. Coordinates look rounded."],
+  ["Kukio (survey)",                       19.825000,  -156.083333, "survey", "DLNR 2017 survey, 35 ft. Coordinates look rounded."],
+  ["Kaupulehu / Black Coral (survey)",     19.835900,  -155.996483, "survey", "DLNR 2017 survey, 27 ft bottom, coral, rock and sand."],
+  ["Anaehoomalu Bay, UnID #2 (survey)",    19.910310,  -155.899720, "survey", "DLNR 2017 survey, 18 ft bottom, coral and sand. Near the A Bay mooring cluster."]
+];
+
+// ---------- Site details (depth, life, features) ----------
+// Matched to a site by the first key contained in its name. Order matters: specific keys first.
+// "Chart" = Kona Coast dive chart photo. "Survey" = DLNR 2017 survey table. Other sources named inline.
+const INFO = [
+  ["Garden Eel", "Chart: 30-80 ft, boat or beach dive, intermediate. Rocky and sandy bottom with garden eels around the reef. Great dive at night for manta rays. Survey: 20-26 ft bottom at the inside sites. DiveBuddy and Dive Hawaii give 30-70 ft."],
+  ["Pentagon", "Chart: 10-35 ft, boat, beginner. Excellent shallow dive with a superb cavern network. Best fish variety in the region. Can be snorkeled from the beach."],
+  ["Robert", "Chart: 20-60 ft, boat, beginner to advanced. Lava shelf with colorful coral heads, pyramid butterflyfish, sergeant majors, octopuses and spinner dolphins. Caution: deep drop-off and currents."],
+  ["Hoover", "Chart: 30-60 ft, boat, beginner to advanced. Dive at the OTEC (Ocean Thermal Energy Conversion) site. Lava rock, cauliflower and antler corals, Franko scorpionfish, eagle rays and a mustachioed conger eel. Caution: deep drop-off and currents."],
+  ["High Rock", "Chart (High Rock, Phantom Ridge, Carpenter's House): 10-60 ft, boat, beginner to advanced. Lava pinnacles, arches and caves, Heller's barracuda, pyramid butterflyfish, shrimp, octopuses and turtles. Caution: currents and deep drop-off."],
+  ["Phantom", "Chart (Phantom Ridge, High Rock, Carpenter's House): 10-60 ft, boat, beginner to advanced. Lava pinnacles, arches and caves, Heller's barracuda, pyramid butterflyfish, octopuses and turtles. Caution: currents and deep drop-off. Survey: 13 ft buoy, 48 ft bottom at Rabbi's Reef nearby."],
+  ["Carpenter", "Chart (High Rock, Phantom Ridge, Carpenter's House): 10-60 ft, boat, beginner to advanced. Lava pinnacles, arches and caves, Heller's barracuda, octopuses and turtles. Caution: currents and deep drop-off. Survey: 34 ft bottom."],
+  ["Rabbi", "Survey: 13 ft buoy, 48 ft bottom. Lionfish arch area."],
+  ["Dottie", "Survey: 14 ft buoy, 28 ft bottom. Coral and rock arches."],
+  ["Black Hole", "Survey: 14 ft buoy, 57 ft bottom. Rock areas with coral."],
+  ["Golden Arches", "Chart: 30-50 ft, boat, beginner to advanced. Archways and bridges in lava rock over white sand and coral, with butterflyfish, Potter's angelfish, blueline snapper and staghorn coral on the south side. Current can be mild to strong. Known as the manta night dive area. Survey: 35 ft bottom at Golden Arches North."],
+  ["Skull Cave", "Jack's Diving Locker: a roomy lava cavern with two openings, dived as a second structure at the Golden Arches area. Watch the surge at the exit."],
+  ["Wash Rock", "Survey: 16 ft buoy, 45 ft bottom. Rock ledge with corals."],
+  ["Sand Chute", "Survey: 15 ft buoy, 30 ft bottom."],
+  ["Touch Of Grey", "Survey: 18 ft buoy, 52 ft bottom. Rock, coral and sand areas. Also called Mahaiula."],
+  ["Pine Trees", "Chart: 15-60 ft, boat, beginner to advanced. Arches, lava tubes, colorful corals, trumpetfish, eels, eagle rays and jacks. Caution: currents, surge and deep drop-off."],
+  ["Pyramid", "Chart: 65-100+ ft (20-34 m), intermediate to advanced. Rapid drop-off into clear, deep water with scattered boulders and coral heads; reef fish in large numbers. Black and soft snowflake corals, cleaner shrimp, lobsters, squirrelfish and several eels. Kona Coast fisheries management area: no collecting or feeding. Survey: 66 ft bottom at the outer site."],
+  ["Suck", "Chart: 30-60 ft, boat, beginner to advanced. 100 ft (30 m) lava tube with skylights. Corals, Moorish idols, puffers, threadfin butterflyfish, trumpetfish, eels, lobsters and shells. Good cave for beginners."],
+  ["Lone Tree", "Chart: 20-60 ft, boat, beginner to advanced. Large archway called Big Arch, lava rocks, sand chutes, coral heads, orange cup coral, cleaner wrasse, trogfish and yellow tangs. Caution: surge by shore. Survey: 38 ft bottom."],
+  ["Kaloko", "DiveHawaii and dive.site: 20-60 ft, off Honokohau Harbor. Lava arches, tunnels and swim-throughs; turtles, reef fish and rays. Usually calm. No diving in the park's fish ponds (NPS)."],
+  ["Turtle Heaven", "Chart and Jack's Diving Locker: a shallow arch to swim through, healthy coral cover and a nice drop-off. Good for turtles, octopus and moray eels. Hawksbill turtles are seen occasionally and tiger sharks on a good day."],
+  ["Turtle Pinnacle", "Depth: 20-60 ft (DiveHawaii); 12 m average and 18 m max (Liveaboard.com). Volcanic pinnacle that is a natural cleaning station for green sea turtles. Turtles, reef fish and eels. Visibility 80+ ft. Boat only; 45-60 minute dives. Chart: to 60 ft, beginner to intermediate, with rainbow cleaner wrasse, parrotfish and scorpionfish. Survey: 39 ft bottom."],
+  ["Terrapin", "Survey: 11 ft buoy, 37 ft bottom. Next to Turtle Pinnacle."],
+  ["Eel Cove", "Chart (Moray Eel Cove): 30-60 ft, beach or boat dive, advanced. Sandy bottom with green coral reef and yellow-margin, white-mouth, zebra and dragon morays, Spanish dancers and butterflyfish. Eel breeding site. Survey: 32-33 ft bottom."],
+  ["Kaiwi", "Chart (Kaiwi Point, Fish Rock): 15-60 ft, shore dive, beginner to intermediate. Rocky shore with large boulders and finger coral; black durgon and millet-seed butterflyfish, reef triggerfish, whitetip reef sharks, manta rays and whale sharks. Jack's Diving Locker has seen manta rays, sharks and humpback whales here."],
+  ["Old Airport", "Chart: 20-30 ft, shore entry, beginner to intermediate. Entry on sand and smooth pahoehoe lava 300 ft north of the parking lot, with a second entry 750 ft further north. Small caves and holes, lionfish, cleaner wrasse, moray eels, eagle rays, manta rays and lots of shellfish. Lava archway on the south side."],
+  ["Kailua", "Chart: 20-35 ft, beginner to intermediate. Easy beach entry in the southern little bay of buoys and boats. Coral-encrusted anchors, nudibranchs, seastars, crabs, shrimp, octopus and reef sharks. Good night dive. Scuba Diving magazine: the pier site can be dived in the middle of the bay or along its north or south end."],
+  ["Manta Ray Beach", "Survey: 30 ft, rock and coral with sand areas."],
+  ["Keauhou", "Keauhou Bay: easy beach entry off the Keauhou Sheraton; clear water, max about 30 ft. Watch boat traffic in the middle of the bay. Manta night dive area. Survey: Keauhou North Inside (Kona Surf) 28 ft; Keauhou North Outside 11 ft buoy depth."],
+  ["Pahoehoe", "Chart: 15-40 ft, beginner to intermediate. Enter at a tiny beach at the north end of the park. Rocky and sandy bottom. Blueline butterflyfish and green sea turtles. Caution: waves."],
+  ["Mile Marker", "Chart: 5-50 ft, boat dive or easy entry on rocky beach, beginner to intermediate. Common introductory dive. Reef triggerfish and Moorish idols. Scuba Diving magazine adds conger eels, dolphins, frogfish and octopus. Entry can be slippery with algae; locals call it Old A's and advise avoiding it in winter."],
+  ["Kahaluu", "Chart: up to 30 ft, beginner to intermediate. Easy beach dive, possibly the best snorkeling in the state. Fed by a fresh water spring. Colorful corals, rock formations, 100+ fish species, invertebrates and green sea turtles. Beach has showers, restrooms and a picnic area."],
+  ["Mano Point", "Chart (Fantasea Reef): 12-50 ft, boat, beginner to intermediate. Whitetip reef sharks. Large Christmas tree coral and a large skylit cavern to the south."],
+  ["Chimney", "Chart: 6-70 ft, boat, intermediate to advanced. Vertical lava tube, enterable at 60 ft on calm days and exits at 6 ft. Reef wall with lobsters, scorpionfish, colorful invertebrates, corals and sponges."],
+  ["Long Lava Tube", "Chart (Amphitheater): 25-40 ft, boat dive off the Red Hill area, intermediate to advanced. Cave 120 ft (36 m) long, entered at 35 ft (11 m), with sunlit holes. Fish, corals, nudibranchs, cowries, pipefish and yellow-margin eels. Lava walls with nooks and crannies."],
+  ["Kealakekua", "Chart (Kealakekua Bay): 5-100+ ft, beginner to intermediate. Easy sandy beach entry; snorkel or scuba. Reef fish, barracuda, ulua, eels, lobsters, octopuses, freshwater springs and turtles. Marine life conservation district."],
+  ["Keei", "Chart: 15-100 ft, beginner to advanced. Lava shelf entry just south of the underwater park. Extremely clear water. Corals, many reef fish, whitetip reef sharks, turtles, seastars, moray eels and garden eels in sand at 90 ft. Stonefish."],
+  ["Place of Refuge", "Chart (Place of Refuge / Two Step): 0-100 ft, beginner to advanced. The most diverse accessible shore dive on Hawaii, with an easy beach entry. Yellow tang, Moorish idols, achilles tang, green sea turtles and crown-of-thorns seastars. Sandy flats at 80+ ft. Dolphins in the morning. Sacred site: please be respectful."],
+  ["Two Step", "Chart (Place of Refuge / Two Step): 0-100 ft, beginner to advanced. Most diverse accessible shore dive on Hawaii. Easy beach entry. Yellow tang, Moorish idols, achilles tang, green sea turtles and crown-of-thorns seastars. Sandy flats at 80+ ft. Snorkelers see dolphins in the morning."],
+  ["Inside Illusions", "Chart: 30-80 ft, boat, intermediate. Two huge pinnacles, many canyons and holes inshore. Lionfish, pipefish, rare yellowfin squirrelfish, razor wrasse, ghost shrimp, garden eels and tiger cowries."],
+  ["Milolii", "Chart: 6-65 ft, beginner to advanced. Wharf or sand-and-rubble beach entry, tide pools, shallow pahoehoe lava with small corals and lots of fish. Marine life conservation district. Caution: boat traffic, outside currents and surf."],
+  ["Black Point", "Chart: boat dive with a sheer wall dropping to 100 ft (30 m) just west of the mooring. Fragile corals along the wall and many reef fish."],
+  ["Kei Kei", "Chart (Horseshoe): 30-70 ft, intermediate. Boat dive at a huge horseshoe-shaped coral reef, with sand patches, very clear water, caverns inshore, reef fish, urchins and lobsters."],
+  ["Ulua", "Chart: 15-100 ft, intermediate to advanced. Boat dive with a big swim-through cave, rock ledges, corals, many butterflyfish and puffers. Deep drop-off west of the mooring. Caution: strong currents."],
+  ["Frog Rock", "Chart: 10-65 ft, boat, beginner to intermediate. Many interconnecting caverns, porcupine puffers, sand patches, octopuses and many invertebrates. Caution: strong currents."],
+  ["Lava Dome", "Chart (The Dome): 30-100 ft, shore or boat dive, beginner to advanced. Giant head of Porites rus coral with valleys of coral formations and sand patches. Reef sharks are common."],
+  ["Crystal Cove", "Chart: 30-75 ft, boat, sheltered from wind. Clear water over a black sandy bottom, sea cucumbers and shells, invertebrates, green sea turtles, reef fish, spinner dolphins and garden eels."],
+  ["Haunted Cavern", "Chart ('Fingers'): 20-50 ft, boat, beginner to intermediate. Long lava finger ridges with arches, caverns and valleys. Unicorn fish, surgeonfish, many coral types and green sea turtles."],
+  ["Makaiwa", "Chart: 25-40 ft, boat, beginner to intermediate. Shallow dive with coral cover over the bottom, rock ledges, ridges, archways and caverns. Numerous reef fish and green sea turtles."],
+  ["Mahukona", "Chart: 15-30 ft, snorkel or scuba off the cement dock north of Lapakahi Historical Park, beginner to intermediate. Ship and barge wreckage with invertebrates, a friendly brown-spotted moray, a huge yellow-margin moray and many reef fish."],
+  ["Kawaihae", "Scuba Diving magazine: easy beach entry at the north end of Kawaihae Harbor, about 20 ft, known for nudibranchs."],
+  ["Puako Reef", "Survey: 40 ft bottom, rock, sand and reef flat (2017). Turtle and garden eel area per Blue Wilderness."],
+  ["Puako", "Chart (Puako): 10-30 ft, beginner to advanced. Small sandy cove entry with a lava shelf, holes and tunnels. Urchins, stinging anemones, colorful coral, squirrelfish, trumpetfish, huge jacks and eels."],
+  ["Kua Bay", "Survey: 40 ft bottom, rock, coral and sand (2017). Kona Honu Divers: west-facing, typically not diveable in winter (southwest through north swells)."],
+  ["Makalawena", "Survey: 40 ft bottom, rock, coral and sand (2017)."],
+  ["Awakee", "Survey: 40-45 ft bottom, coral, rock and sand (2017)."],
+  ["Kukio", "Survey: 35 ft bottom, coral, rock and sand (2017)."],
+  ["Kaupulehu", "Survey: 27 ft bottom, coral, rock and sand (2017)."],
+  ["Anaehoomalu", "Survey: 18 ft bottom, coral and sand (2017). Near the A Bay mooring cluster."],
+  ["A Bay", "Survey: 25-40 ft bottom, coral, rock and sand areas. The A Bay Arches are a legal dive area (2017)."]
+];
+function infoFor(name) {
+  const hit = INFO.find(([k]) => name.includes(k));
+  return hit ? `<br><br><b>Site info</b><br>${hit[1]}` : "";
+}
+
+// ---------- Helpers ----------
+function dm(s) { const p = s.split("."); return +p[0] + (+(p[1] + "." + p[2])) / 60; }
+function fmt(v) { const a = Math.abs(v), d = Math.floor(a), m = (a - d) * 60; return d + "&deg; " + m.toFixed(3) + "&prime;"; }
+function distM(a, b) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function distLabel(m) { return m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(2) + " km"; }
+
+// Your watch fix: 19.736678 N, 156.053840 W (6 points, nearly identical)
+const FIX = [19.736678, -156.053840];
+
+// ---------- Map ----------
+const map = L.map("map", { zoomControl: false }).setView([19.7, -155.95], 11);
+L.control.zoom({ position: "bottomright" }).addTo(map);
+
+const satellite = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19, attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" }
+).addTo(map);
+
+const placeNames = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19 }
+);
+
+const stateLayer = L.layerGroup().addTo(map);
+const estLayer = L.layerGroup().addTo(map);
+
+const allPts = [FIX];
+
+// State mooring sites: solid dots
+for (const [name, la, lo, g] of STATE) {
+  const lat = dm(la), lon = -dm(lo);
+  const col = GROUPS[g].color;
+  allPts.push([lat, lon]);
+  L.circleMarker([lat, lon], { radius: 6, color: "#fff", weight: 1.5, fillColor: col, fillOpacity: 1 })
+    .bindPopup(
+      `<b>${name}</b><br>${fmt(lat)} N, ${fmt(lon)} W<br>` +
+      `${distLabel(distM(FIX, [lat, lon]))} from your fix<br>` +
+      `<i>State mooring coordinates</i>${infoFor(name)}`
+    )
+    .addTo(stateLayer);
+}
+
+// Anchored / estimated sites: dashed rings
+for (const [name, lat, lon, g, kind, note] of EST) {
+  const col = GROUPS[g].color;
+  allPts.push([lat, lon]);
+  L.circleMarker([lat, lon], {
+    radius: 9, color: col, weight: 2, dashArray: "4 3", fillColor: col, fillOpacity: 0.25
+  })
+    .bindPopup(
+      `<b>${name}</b><br>${fmt(lat)} N, ${fmt(lon)} W<br>` +
+      `${distLabel(distM(FIX, [lat, lon]))} from your fix<br>` +
+      `<i>${kind === "anchor" ? "Anchored" : "Estimated"}:</i> ${note}${infoFor(name)}`
+    )
+    .addTo(estLayer);
+}
+
+// Scuba sites layer
+const diveLayer = L.layerGroup().addTo(map);
+for (const [name, lat, lon, g, note] of SITES) {
+  allPts.push([lat, lon]);
+  L.circleMarker([lat, lon], { radius: 5, color: "#fff", weight: 1, fillColor: GROUPS[g].color, fillOpacity: 1 })
+    .bindPopup(
+      `<b>${name}</b><br>${fmt(lat)} N, ${fmt(-lon)} W<br>` +
+      `${distLabel(distM(FIX, [lat, lon]))} from your fix<br><i>${note}</i>${infoFor(name)}`
+    )
+    .addTo(diveLayer);
+}
+
+// Your dive fix
+L.circleMarker(FIX, { radius: 10, color: "#fff", weight: 2, fillColor: "#e03131", fillOpacity: 1 })
+  .bindPopup("<b>Your dive fix</b><br>Watch GPS, 6 points within about 3 m<br>19&deg; 44.203&prime; N, 156&deg; 03.228&prime; W")
+  .addTo(map);
+
+// Legend
+const legend = document.getElementById("legend");
+for (const k of Object.keys(GROUPS)) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<span class="sw" style="background:${GROUPS[k].color}"></span>${GROUPS[k].label}`;
+  legend.appendChild(row);
+}
+const fixRow = document.createElement("div");
+fixRow.className = "row";
+fixRow.innerHTML = `<span class="sw" style="background:#e03131"></span>Your dive fix`;
+legend.appendChild(fixRow);
+
+// Layer switcher
+L.control.layers(
+  { "Satellite": satellite, "Street names (off)": L.layerGroup() },
+  { "Place names": placeNames, "Mooring sites": stateLayer, "Estimated / anchored": estLayer, "Scuba sites (survey)": diveLayer },
+  { collapsed: true, position: "topright" }
+).addTo(map);
+
+// ---------- Scrollable, searchable site list ----------
+const moorMarkers = stateLayer.getLayers();
+const estMarkers  = estLayer.getLayers();
+const diveMarkers = diveLayer.getLayers();
+const items = [];
+STATE.forEach(([name, la, lo, g], i) => items.push({ name, lat: dm(la), lon: -dm(lo), g, sec: "State moorings (DLNR)", m: moorMarkers[i] }));
+SITES.forEach(([name, lat, lon, g], i) => items.push({ name, lat, lon, g, sec: "Scuba sites (survey / published)", m: diveMarkers[i] }));
+EST.forEach(([name, lat, lon, g], i) => items.push({ name, lat, lon, g, sec: "Estimated / anchored", m: estMarkers[i] }));
+items.push({ name: "Your dive fix", lat: FIX[0], lon: FIX[1], g: null, sec: "Your fix", m: null });
+
+const drawer = document.getElementById("drawer");
+const list = document.getElementById("list");
+const q = document.getElementById("q");
+
+function renderList() {
+  const term = q.value.trim().toLowerCase();
+  list.innerHTML = "";
+  let cur = null;
+  for (const it of items) {
+    if (term && !it.name.toLowerCase().includes(term)) continue;
+    if (it.sec !== cur) {
+      cur = it.sec;
+      const h = document.createElement("div");
+      h.className = "sec";
+      h.textContent = cur;
+      list.appendChild(h);
+    }
+    const b = document.createElement("button");
+    b.className = "item";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = it.g ? GROUPS[it.g].color : "#e03131";
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = it.name;
+    b.append(dot, nm);
+    b.onclick = () => {
+      map.flyTo([it.lat, it.lon], 15, { duration: 0.8 });
+      if (it.m && it.m._map) it.m.openPopup();
+      if (window.innerWidth < 700) drawer.classList.remove("open");
+    };
+    list.appendChild(b);
+  }
+  if (!list.children.length) {
+    const none = document.createElement("div");
+    none.className = "sec";
+    none.textContent = "No matches";
+    list.appendChild(none);
+  }
+}
+
+document.getElementById("toggle").onclick = () => drawer.classList.toggle("open");
+document.getElementById("close").onclick = () => drawer.classList.remove("open");
+q.addEventListener("input", renderList);
+renderList();
+if (window.innerWidth >= 700) drawer.classList.add("open");
+
+map.fitBounds(L.latLngBounds(allPts).pad(0.05));
+</script>
+</body>
+</html>
