@@ -389,7 +389,7 @@ const placeNames = L.tileLayer(
 const stateLayer = L.layerGroup().addTo(map);
 const estLayer = L.layerGroup().addTo(map);
 
-const allPts = [FIX];
+const allPts = [];
 
 // State mooring sites: solid dots
 for (const [name, la, lo, g] of STATE) {
@@ -509,14 +509,28 @@ map.on("locationfound", e => {
   L.circleMarker(e.latlng, { radius: 8, color: "#fff", weight: 2, fillColor: "#2f80ed", fillOpacity: 1 }).addTo(meLayer);
   if (!centeredOnMe) { map.setView(e.latlng, Math.max(map.getZoom(), 15)); centeredOnMe = true; }
   locateBtn.classList.add("on");
+  lastMe = e.latlng;
+  refreshDist();
 });
 map.on("locationerror", e => {
   locateBtn.classList.remove("on");
   locateBtn.title = "Location unavailable: " + e.message + ". Allow location for this site in Settings > Safari.";
 });
+// Distances in site popups are measured from the live location, and update as you move.
+let lastMe = null;
+function refreshDist() {
+  document.querySelectorAll(".mydist").forEach(el => {
+    if (!lastMe) { el.textContent = "Distance: turn on location"; return; }
+    const d = distM([lastMe.lat, lastMe.lng], [+el.dataset.lat, +el.dataset.lon]);
+    el.textContent = distLabel(d) + " from you";
+  });
+}
+map.on("popupopen", refreshDist);
+
 locateBtn.onclick = () => {
   if (locateBtn.classList.contains("on")) {
-    map.stopLocate(); meLayer.clearLayers(); locateBtn.classList.remove("on"); centeredOnMe = false; return;
+    map.stopLocate(); meLayer.clearLayers(); locateBtn.classList.remove("on"); centeredOnMe = false;
+    lastMe = null; refreshDist(); return;
   }
   centeredOnMe = false;
   map.locate({ watch: true, enableHighAccuracy: true, setView: false });
